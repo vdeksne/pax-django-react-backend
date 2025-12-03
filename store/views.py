@@ -82,6 +82,12 @@ class CategoryListView(generics.ListAPIView):
     def get_queryset(self):
         # Optimize category queries - categories are usually small, but still optimize
         return Category.objects.filter(active=True).only('id', 'title', 'image', 'slug', 'active')
+    
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        # Add cache headers - categories don't change often
+        response['Cache-Control'] = 'public, max-age=600'  # Cache for 10 minutes
+        return response
 
 
 class BrandListView(generics.ListAPIView):
@@ -108,6 +114,12 @@ class ProductListView(generics.ListAPIView):
     serializer_class = ProductListSerializer  # Use lightweight serializer for list
     permission_classes = (AllowAny,)
     pagination_class = StandardResultsSetPagination
+    
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        # Add cache headers to reduce server load
+        response['Cache-Control'] = 'public, max-age=300'  # Cache for 5 minutes
+        return response
     
     def get_queryset(self):
         from django.db.models import Avg, Count, Q
