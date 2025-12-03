@@ -90,9 +90,14 @@ class BrandListView(generics.ListAPIView):
     permission_classes = (AllowAny,)
 
 class FeaturedProductListView(generics.ListAPIView):
-    serializer_class = ProductSerializer
-    queryset = Product.objects.filter(status="published", featured=True)[:3]
+    serializer_class = ProductListSerializer  # Use lightweight serializer
     permission_classes = (AllowAny,)
+    
+    def get_queryset(self):
+        # Optimize featured products query
+        return Product.objects.filter(status="published", featured=True).select_related(
+            'category', 'vendor'
+        ).order_by('-date')[:3]
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 12
