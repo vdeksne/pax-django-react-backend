@@ -460,9 +460,21 @@ class Earning(generics.ListAPIView):
     serializer_class = EarningSummarySerializer
 
     def get_queryset(self):
-
-        vendor_id = self.kwargs['vendor_id']
-        vendor = Vendor.objects.get(id=vendor_id)
+        vendor_id = self.kwargs.get('vendor_id')
+        
+        # Validate vendor_id
+        if not vendor_id or vendor_id in [None, 0, 'undefined', 'null', '']:
+            return []
+        
+        try:
+            vendor_id = int(vendor_id)
+        except (ValueError, TypeError):
+            return []
+        
+        try:
+            vendor = Vendor.objects.get(id=vendor_id)
+        except Vendor.DoesNotExist:
+            return []
 
         one_month_ago = datetime.today() - timedelta(days=28)
         monthly_revenue = CartOrderItem.objects.filter(vendor=vendor, order__payment_status="paid", date__gte=one_month_ago).aggregate(
@@ -477,13 +489,32 @@ class Earning(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
+        if not queryset:
+            # Return empty data structure if no vendor found
+            return Response([{
+                'monthly_revenue': 0,
+                'total_revenue': 0,
+            }])
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
 
 @api_view(('GET',))
 def MonthlyEarningTracker(request, vendor_id):
-    vendor = Vendor.objects.get(id=vendor_id)
+    # Validate vendor_id
+    if not vendor_id or vendor_id in [None, 0, 'undefined', 'null', '']:
+        return Response([])
+    
+    try:
+        vendor_id = int(vendor_id)
+    except (ValueError, TypeError):
+        return Response([])
+    
+    try:
+        vendor = Vendor.objects.get(id=vendor_id)
+    except Vendor.DoesNotExist:
+        return Response([])
+    
     monthly_earning_tracker = (
         CartOrderItem.objects
         .filter(vendor=vendor, order__payment_status="paid")
@@ -498,7 +529,7 @@ def MonthlyEarningTracker(request, vendor_id):
         )
         .order_by("-month")
     )
-    return Response(monthly_earning_tracker)
+    return Response(list(monthly_earning_tracker))
 
 
 class ReviewsListAPIView(generics.ListAPIView):
