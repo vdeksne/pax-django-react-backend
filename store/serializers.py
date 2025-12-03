@@ -246,31 +246,44 @@ class ProductListSerializer(serializers.ModelSerializer):
         depth = 1  # Only one level deep for foreign keys
     
     def get_image(self, obj):
-        """Optimized image URL generation - avoid expensive storage.exists() calls"""
+        """Image URL generation using Django's FileField.url method"""
+        request = self.context.get('request')
         if obj.image and hasattr(obj.image, 'name') and obj.image.name:
+            # Skip default placeholder images that were never actually uploaded
             default_names = ['product.jpg', 'category.jpg', 'brand.jpg', 'gallery.jpg', 'shop-image.jpg']
             if obj.image.name in default_names:
                 return None
             
             try:
-                from django.conf import settings
-                from backend.storages import MediaStorage
-                
-                # Directly generate URL without checking if file exists (faster)
-                # S3 will return 404 if file doesn't exist, which is acceptable
-                media_storage = MediaStorage()
-                image_url = media_storage.url(obj.image.name)
-                
-                # Make absolute if needed
-                if image_url and image_url.startswith('/'):
-                    if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
-                        image_url = f"https://{settings.AWS_S3_CUSTOM_DOMAIN}{image_url}"
-                
-                request = self.context.get('request')
-                if request and image_url and not image_url.startswith('http'):
-                    return request.build_absolute_uri(image_url)
-                return image_url
-            except Exception:
+                # Use Django's FileField.url which automatically uses the correct storage backend
+                # This handles S3 URLs correctly and maintains backward compatibility
+                image_url = obj.image.url
+                if image_url:
+                    from django.conf import settings
+                    
+                    # Backward compatibility: If URL points to /media/ but file might be in /static/
+                    # Many existing files were uploaded to static/ before the storage change
+                    if '/media/' in image_url and hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN'):
+                        # Try static path for backward compatibility
+                        static_url = image_url.replace('/media/', '/static/')
+                        # For now, return both URLs - frontend can try both or we can check existence
+                        # But to avoid breaking, let's try static first for backward compatibility
+                        image_url = static_url
+                    
+                    # If URL is relative, make it absolute
+                    if image_url.startswith('/'):
+                        if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
+                            image_url = f"https://{settings.AWS_S3_CUSTOM_DOMAIN}{image_url}"
+                    
+                    if request:
+                        return request.build_absolute_uri(image_url) if not image_url.startswith('http') else image_url
+                    return image_url
+            except (ValueError, AttributeError, Exception) as e:
+                # Only log errors in development/debug mode
+                import logging
+                logger = logging.getLogger(__name__)
+                if hasattr(settings, 'DEBUG') and settings.DEBUG:
+                    logger.error(f"Error getting image URL for product {obj.id}: {e}")
                 return None
         return None
     
@@ -357,7 +370,7 @@ class ProductSerializer(serializers.ModelSerializer):
         ]
     
     def get_image(self, obj):
-        """Optimized image URL generation - avoid expensive storage.exists() calls"""
+        """Image URL generation using Django's FileField.url method"""
         request = self.context.get('request')
         # Check if image exists and is a valid file (not just a default string)
         if obj.image and hasattr(obj.image, 'name') and obj.image.name:
@@ -368,22 +381,25 @@ class ProductSerializer(serializers.ModelSerializer):
             
             try:
                 from django.conf import settings
-                from backend.storages import MediaStorage
                 
-                # Directly generate URL without checking if file exists (faster)
-                # S3 will return 404 if file doesn't exist, which is acceptable
-                # This avoids expensive storage.exists() calls for every product
-                media_storage = MediaStorage()
-                image_url = media_storage.url(obj.image.name)
-                
-                # Make absolute if needed
-                if image_url and image_url.startswith('/'):
-                    if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
-                        image_url = f"https://{settings.AWS_S3_CUSTOM_DOMAIN}{image_url}"
-                
+                # Use Django's FileField.url which automatically uses the correct storage backend
+                # This handles S3 URLs correctly and maintains backward compatibility
+                image_url = obj.image.url
                 if image_url:
-                    if request and not image_url.startswith('http'):
-                        return request.build_absolute_uri(image_url)
+                    # Backward compatibility: If URL points to /media/ but file might be in /static/
+                    # Many existing files were uploaded to static/ before the storage change
+                    if '/media/' in image_url and hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN'):
+                        # Try static path for backward compatibility
+                        static_url = image_url.replace('/media/', '/static/')
+                        image_url = static_url
+                    
+                    # If URL is relative, make it absolute
+                    if image_url.startswith('/'):
+                        if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
+                            image_url = f"https://{settings.AWS_S3_CUSTOM_DOMAIN}{image_url}"
+                    
+                    if request:
+                        return request.build_absolute_uri(image_url) if not image_url.startswith('http') else image_url
                     return image_url
                 
                 return None
@@ -391,7 +407,7 @@ class ProductSerializer(serializers.ModelSerializer):
                 # Only log errors in development/debug mode
                 import logging
                 logger = logging.getLogger(__name__)
-                if settings.DEBUG:
+                if hasattr(settings, 'DEBUG') and settings.DEBUG:
                     logger.error(f"Error getting image URL for product {obj.id}: {e}")
                 return None
         return None
