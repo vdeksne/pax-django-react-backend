@@ -105,11 +105,26 @@ class ProductListView(generics.ListAPIView):
     pagination_class = StandardResultsSetPagination
     
     def get_queryset(self):
+        from django.db.models import Avg, Count, Q
+        from store.models import Review, CartOrderItem
+        
         # Optimize queries with select_related for ForeignKey relationships
         # Note: brand is CharField, not ForeignKey, so no select_related needed
+        # Add annotations to avoid N+1 queries for ratings and order counts
         queryset = Product.objects.filter(status="published").select_related(
             'category',  # ForeignKey
             'vendor'     # ForeignKey
+        ).annotate(
+            # Pre-calculate average rating to avoid N+1 queries
+            avg_rating=Avg('reviews__rating'),
+            # Pre-calculate rating count
+            rating_count_annotated=Count('reviews', distinct=True),
+            # Pre-calculate order count for paid orders
+            order_count_annotated=Count(
+                'order_item',
+                filter=Q(order_item__order__payment_status='paid'),
+                distinct=True
+            )
         ).order_by('-date')  # Order by date for consistent pagination
         return queryset
 

@@ -275,15 +275,23 @@ class ProductListSerializer(serializers.ModelSerializer):
         return None
     
     def get_product_rating(self, obj):
-        """Get product rating - cached at model level if possible"""
+        """Get product rating - use annotation if available, otherwise call method"""
+        # If queryset was annotated, use that (faster)
+        if hasattr(obj, 'avg_rating'):
+            return float(obj.avg_rating) if obj.avg_rating else 0
+        # Otherwise call the method (slower but works)
         return obj.product_rating() if hasattr(obj, 'product_rating') else 0
     
     def get_rating_count(self, obj):
-        """Get rating count"""
+        """Get rating count - use annotation if available"""
+        if hasattr(obj, 'rating_count_annotated'):
+            return obj.rating_count_annotated
         return obj.rating_count() if hasattr(obj, 'rating_count') else 0
     
     def get_order_count(self, obj):
-        """Get order count"""
+        """Get order count - use annotation if available"""
+        if hasattr(obj, 'order_count_annotated'):
+            return obj.order_count_annotated
         return obj.order_count() if hasattr(obj, 'order_count') else 0
     
     def get_get_precentage(self, obj):
