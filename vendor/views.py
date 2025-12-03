@@ -284,18 +284,31 @@ class ProductUpdateAPIView(generics.RetrieveUpdateAPIView):
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        product = self.get_object()
+        try:
+            product = self.get_object()
+        except (Vendor.DoesNotExist, Product.DoesNotExist) as e:
+            return Response(
+                {'error': 'Product or vendor not found', 'detail': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         # Deserialize product data
-        serializer = self.get_serializer(product, data=request.data)
-        serializer.is_valid(raise_exception=True)
+        serializer = self.get_serializer(product, data=request.data, partial=True)
+        if not serializer.is_valid():
+            # Return validation errors with details
+            return Response(
+                {'error': 'Validation failed', 'errors': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         self.perform_update(serializer)
 
         # Delete all existing nested data
-        product.specification().delete()
-        product.color().delete()
-        product.size().delete()
-        product.gallery().delete()
+        # Use queryset filter since models don't have explicit related_name
+        # The original code used .specification().delete() which is incorrect
+        Specification.objects.filter(product=product).delete()
+        Color.objects.filter(product=product).delete()
+        Size.objects.filter(product=product).delete()
+        Gallery.objects.filter(product=product).delete()
 
         specifications_data = []
         colors_data = []
