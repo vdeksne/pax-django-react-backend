@@ -61,8 +61,10 @@ class CategorySerializer(serializers.ModelSerializer):
         return None
     
     def get_products(self, obj):
-        products = Product.objects.filter(category=obj)
-        return ProductSerializer(products, many=True, context=self.context).data
+        # Optimize: Only get products if needed (for detail views)
+        # For list views, this method might not be called, but if it is, optimize the query
+        products = Product.objects.filter(category=obj).only('id', 'title', 'slug', 'price', 'image')
+        return ProductListSerializer(products, many=True, context=self.context).data
 
 # Define a serializer for the Tag model
 class TagSerializer(serializers.ModelSerializer):

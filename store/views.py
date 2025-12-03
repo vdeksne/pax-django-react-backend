@@ -77,8 +77,11 @@ class ConfigSettingsDetailView(generics.RetrieveAPIView):
 
 class CategoryListView(generics.ListAPIView):
     serializer_class = CategorySerializer
-    queryset = Category.objects.filter(active=True)
     permission_classes = (AllowAny,)
+    
+    def get_queryset(self):
+        # Optimize category queries - categories are usually small, but still optimize
+        return Category.objects.filter(active=True).only('id', 'title', 'image', 'slug', 'active')
 
 
 class BrandListView(generics.ListAPIView):
