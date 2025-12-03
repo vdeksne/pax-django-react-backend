@@ -21,10 +21,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.views import APIView
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
 
 # Serializers
 from userauths.serializer import MyTokenObtainPairSerializer, RegisterSerializer
-from store.serializers import CancelledOrderSerializer, CartSerializer, CartOrderItemSerializer, CouponUsersSerializer, ProductSerializer, TagSerializer ,CategorySerializer, DeliveryCouriersSerializer, CartOrderSerializer, GallerySerializer, BrandSerializer, ProductFaqSerializer, ReviewSerializer,  SpecificationSerializer, CouponSerializer, ColorSerializer, SizeSerializer, AddressSerializer, WishlistSerializer, ConfigSettingsSerializer
+from store.serializers import CancelledOrderSerializer, CartSerializer, CartOrderItemSerializer, CouponUsersSerializer, ProductSerializer, ProductListSerializer, TagSerializer ,CategorySerializer, DeliveryCouriersSerializer, CartOrderSerializer, GallerySerializer, BrandSerializer, ProductFaqSerializer, ReviewSerializer,  SpecificationSerializer, CouponSerializer, ColorSerializer, SizeSerializer, AddressSerializer, WishlistSerializer, ConfigSettingsSerializer
 
 # Models
 from userauths.models import User
@@ -90,10 +91,24 @@ class FeaturedProductListView(generics.ListAPIView):
     queryset = Product.objects.filter(status="published", featured=True)[:3]
     permission_classes = (AllowAny,)
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class ProductListView(generics.ListAPIView):
-    serializer_class = ProductSerializer
-    queryset = Product.objects.filter(status="published")
+    serializer_class = ProductListSerializer  # Use lightweight serializer for list
     permission_classes = (AllowAny,)
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        # Optimize queries with select_related for ForeignKey relationships
+        # Note: brand is CharField, not ForeignKey, so no select_related needed
+        queryset = Product.objects.filter(status="published").select_related(
+            'category',  # ForeignKey
+            'vendor'     # ForeignKey
+        ).order_by('-date')  # Order by date for consistent pagination
+        return queryset
 
 class ProductDetailView(generics.RetrieveAPIView):
     serializer_class = ProductSerializer
