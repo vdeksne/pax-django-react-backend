@@ -342,8 +342,18 @@ class GeocodeReverseView(APIView):
             
             # Check if response is successful
             if response.status_code == 200:
-                data = response.json()
-                return Response(data, status=status.HTTP_200_OK)
+                try:
+                    data = response.json()
+                    return Response(data, status=status.HTTP_200_OK)
+                except ValueError as json_error:
+                    # JSON decode error
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to parse Nominatim JSON response: {str(json_error)}")
+                    return Response(
+                        {"error": "Invalid JSON response from geocoding service", "type": "json_decode_error"},
+                        status=status.HTTP_502_BAD_GATEWAY
+                    )
             elif response.status_code == 429:
                 # Rate limited - return a more helpful error
                 return Response(
@@ -368,22 +378,37 @@ class GeocodeReverseView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY
             )
         except requests.exceptions.RequestException as e:
+            # Log detailed error information
+            import logging
+            logger = logging.getLogger(__name__)
+            error_msg = f"Geocoding service error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             return Response(
-                {"error": f"Geocoding service error: {str(e)}"},
+                {"error": error_msg, "type": "request_exception"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         except ValueError as e:
             # JSON decode error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"JSON decode error: {str(e)}", exc_info=True)
             return Response(
-                {"error": "Invalid response from geocoding service"},
+                {"error": "Invalid response from geocoding service", "type": "json_decode_error", "details": str(e)},
                 status=status.HTTP_502_BAD_GATEWAY
             )
         except Exception as e:
             # Log the full error for debugging
             import logging
+            import traceback
             logger = logging.getLogger(__name__)
-            logger.error(f"Geocode error: {str(e)}", exc_info=True)
+            error_trace = traceback.format_exc()
+            logger.error(f"Geocode unexpected error: {str(e)}\n{error_trace}", exc_info=True)
+            # Return detailed error in response for debugging
             return Response(
-                {"error": f"Unexpected error: {str(e)}"},
+                {
+                    "error": f"Unexpected error: {str(e)}",
+                    "type": type(e).__name__,
+                    "details": str(e) if str(e) else "No details available"
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
